@@ -152,7 +152,6 @@ class DeepAgent():
         self.start_annealing = start_annealing
         self.start_impsam = start_impsam
         self.end_impsam = end_impsam
-        self.trace_values = {}
         self.is_first_update = True
 
         self.alg = alg
@@ -456,32 +455,6 @@ class DeepAgent():
         self.env = environment
         self.log = Log(log_file, self)
 
-        self.trace_states = []
-        self.trace_data = []
-        actions_lists = [[3, 1, 3, 5, 5, 4, 0, 0, 1, 1, 1, 1, 3, 3, 5, 5, 5, 5, 5, 5], [3, 2, 3, 5, 5, 4, 0, 0, 2, 2, 2, 2, 3, 3, 5, 5, 5, 5, 5, 5], [3, 1, 1, 1, 1, 1, 3, 5, 3, 3, 3, 3, 3, 1, 1, 1, 1, 3, 3, 3], [
-            3, 1, 5, 5, 5, 5, 5, 4, 0, 0, 1, 1, 1, 1, 3, 5, 5, 5, 5, 5, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 3, 1, 3, 5, 5, 5, 5], [3, 2, 5, 5, 5, 5, 5, 4, 0, 0, 2, 2, 2, 2, 3, 5, 5, 5, 5, 5, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 3, 1, 3, 1, 3, 1, 3, 1, 5, 5, 5, 5]]
-        k = 0
-        for actions in actions_lists:
-            raw = environment.reset()
-            self.trace_states.append(
-                self.history.fill_raw_frame(raw["pixels"]))
-            print("building next actions")
-            for a in actions:
-                if a >= self.action_count:
-                    a = 1
-                raw, reward, done = environment.step(a, self.frame_skip)
-                print("building", a, done, reward, raw["position"])
-                self.trace_data.append((a, reward + k / 1000, done))
-                if not done:
-                    self.trace_states.append(
-                        self.history.add_raw_frame(raw["pixels"]))
-                else:
-                    break
-
-        self.trace_states = np.repeat(np.array(self.trace_states), 2, axis=0)
-        self.trace_data = np.repeat(
-            np.array(self.trace_data, dtype=object), 2, axis=0)
-
         if self.alg == "mn":
             self.mn = MultiNetwork(self, reuse=self.reuse)
 
@@ -531,7 +504,6 @@ class DeepAgent():
                     start_state_raw["pixels"])
                 pred_idx = None
 
-            print("step", i, self.epsilon, episode_steps)
             self.log.log_step(self.env, i, loss, reward,
                               terminal or episode_steps > self.max_episode_length, current_state, next_state,
                               self.weights, self.end_discount, episode_steps,
@@ -642,7 +614,6 @@ class DeepAgent():
             if trace_id not in self.trace_values:
                 self.trace_values[trace_id] = np.random.random()
 
-            print("trace", trace_id,  self.trace_values[trace_id])
             return self.trace_values[trace_id]
 
         def exp_trace_value(trace, trace_id, memory_indices):
@@ -656,8 +627,6 @@ class DeepAgent():
                 self.trace_values[trace_id] = best_q - \
                     np.dot(q_values[action], self.weights)
 
-            print("trace", trace_id, "action",
-                  trace[0][1],   self.trace_values[trace_id])
             return self.trace_values[trace_id]
 
         value_function = der_trace_value if self.memory_type == "DER" else sel_trace_value if self.memory_type == "SEL" else exp_trace_value
@@ -893,82 +862,6 @@ class DeepAgent():
 
         return model_q, target_q, w_batch, states
 
-    def trace_priorities(self):
-        batch_data = self.trace_states
-        data = self.trace_data
-        w_batch = self.get_training_weights(batch_data)[::2]
-
-        w_batch = np.repeat(w_batch, 2, axis=0)
-        # if self.dupe in ("CN","CN-UVFA"):
-        #     batch_data = np.repeat(batch_data, 2, axis=0)
-        #     data =  np.repeat(data, 2, axis=0)
-        w_batch[::2] = self.weights  # [1./3,1./3,1./3]
-        sec = np.zeros(3)
-        i = np.random.randint(0, 3)
-        sec[i] += 1
-
-        j = np.random.randint(0, 3)
-        sec[j] += 1
-        j = np.random.randint(0, 3)
-        sec[j] += 1
-        sec /= np.sum(sec)
-        w_batch[1::2] = sec
-        # l = len(batch_data)
-        # batch_data = np.rollaxis(batch_data,4,2).reshape((l,self.frames_per_state*self.history.dimensions)+self.history.im_shape[:-1]+(1,))
-
-        inp = [w_batch, batch_data]
-        print(w_batch.shape, batch_data.shape)
-        modq = self.model.predict(inp, batch_size=min(128, len(w_batch)))
-        tarq = self.target_model.predict(
-            inp, batch_size=min(128, len(w_batch)))
-        not_mined = False
-        cum_rew = np.zeros(self.obj_cnt)
-        prev_rew = np.array(self.obj_cnt)
-        cum_er = 0
-        l = 0
-        ep_i = 0
-        for (a, r, done), m, t, w, bd in zip(reversed(data), reversed(modq), reversed(tarq), reversed(w_batch), reversed(batch_data)):
-
-            if done:
-                cum_rew = np.array(r) + 0
-
-                not_mined = True
-                ep_i += 1
-            else:
-                if l % 2 == 0:
-                    cum_rew = r + cum_rew * self.discount
-
-            if self.has_scalar_qvalues():
-                cum_rewq = np.dot(cum_rew, w)
-            else:
-                cum_rewq = cum_rew
-            if not_mined:
-                print(self.steps, "traceerr", ep_i, done, "a", a, "r", r, "c", cum_rewq, "m", m[a], "t", t[a], "w", w, "e", np.mean(
-                    np.abs(cum_rewq - m[a])), np.mean(np.abs(cum_rewq - t[a])), sep='\t')
-                cum_er += np.abs(cum_rew - m[a]).mean()
-            else:
-                print(self.steps, "traceecomp", ep_i, done, "a", a, "r", r, "c", cum_rewq, "m", m[a], "t", t[a], "w", w, "e", np.mean(
-                    np.abs(cum_rewq - m[a])), np.mean(np.abs(cum_rewq - t[a])), sep='\t')
-            not_mined = not_mined and (r[-1] != -0.22)
-            l += 1
-
-        def mod(w):
-            if self.has_scalar_qvalues():
-
-                return np.zeros(1)
-            else:
-                return np.zeros(3)
-        (a, r, done), m, t, w = list(zip(reversed(data),
-                                         reversed(modq), reversed(tarq), reversed(w_batch)))[-2]
-        print(self.steps, "traceerri", ep_i, done, "a", a, "r", r, "c", mod(
-            w), "m", m[a], "t", t[a], "w", w, "e", np.mean(np.abs(mod(w) - m[a])), np.mean(np.abs(mod(w) - t[a])), sep='\t')
-        (a, r, done), m, t, w = list(zip(reversed(data),
-                                         reversed(modq), reversed(tarq), reversed(w_batch)))[-1]
-        print(self.steps, "traceerri", ep_i, done, "a", a, "r", r, "c", mod(
-            w), "m", m[a], "t", t[a], "w", w, "e", np.mean(np.abs(mod(w) - m[a])), np.mean(np.abs(mod(w) - t[a])), sep='\t')
-        print("tracecumer", self.steps, cum_rewq)
-        self.last_prnt = self.steps + 0
-
     def update_priorities(self, batch, ids, ignore_dupe=False, pr=False):
         """Given a batch of transitions, this method computes each transition's
         error and uses that error to update its priority in the replay buffer
@@ -982,8 +875,6 @@ class DeepAgent():
             float -- The batch's mean loss
         """
 
-        if self.steps % 100 == 0:
-            self.trace_priorities()
         model_q, target_q, weights, _ = self.get_training_data(batch)
 
         errors = np.zeros(len(batch))
@@ -1162,11 +1053,6 @@ class MultiNetwork():
 
         self.purge()
 
-    def print(self):
-        for k, p in self.policies.items():
-            print("mn", k, "id", p["id"], "w",
-                  arr2str(p["weights"]), "o", p["optimal_for"], "u",
-                  p["updates"], "v", arr2str(p["value"]))
 
     def load_parameters(self, model_pol_index, weights):
         """Load the parameter's of the given model policy
@@ -1236,5 +1122,3 @@ class MultiNetwork():
 
         # Set the model policy as optimal for the new weights
         self.save_policy_for_weight(weights_id, self.policies[model_pol_index])
-
-        # print("multi loaded", weights_id, model_pol_index, weights)
