@@ -477,8 +477,8 @@ class DiverseMemory(object):
             if not self.trace_diversity:
                 assert len(trace) == 1
             self.secondary_traces.append((trace, write_indices))
-        else:
-            print("No space found for trace", trace[0][0],", discarding...",file=sys.stderr)
+        # elif self.sec_capacity>0:
+        #     print("No space found for trace", trace[0][0],", discarding...",file=sys.stderr)
 
         # Remove trace from main memory
         self.remove_trace((None, indices))

@@ -20,6 +20,10 @@ from keras.models import Model, load_model
 from keras.optimizers import *
 from keras.utils import np_utils
 
+from keras.backend.tensorflow_backend import set_session
+config = tf.ConfigProto()
+config.gpu_options.per_process_gpu_memory_fraction = 0.1
+set_session(tf.Session(config=config))
 from config_agent import *
 from diverse_mem import DiverseMemory
 from history import *
@@ -36,7 +40,7 @@ try:
 except:
     import Image
 
-DEBUG = 0
+DEBUG = 1
 
 
 def masked_error(args):
@@ -153,7 +157,7 @@ class DeepAgent():
         self.start_impsam = start_impsam
         self.end_impsam = end_impsam
         self.is_first_update = True
-
+        self.trace_values={}
         self.alg = alg
         self.dupe = dupe
         self.update_interval = update_interval
@@ -862,6 +866,7 @@ class DeepAgent():
 
         return model_q, target_q, w_batch, states
 
+
     def update_priorities(self, batch, ids, ignore_dupe=False, pr=False):
         """Given a batch of transitions, this method computes each transition's
         error and uses that error to update its priority in the replay buffer
@@ -904,16 +909,6 @@ class DeepAgent():
 
             error = mae(model_q[i * 2][action], target)
 
-            if DEBUG:
-                if terminal and (self.steps % 100 == 0 or pr):
-                    print(self.steps, "priormodif", ids[i] - (self.memory_size - 1),
-                          terminal, "u", model_q[i *
-                                                 2][action], "t", target, "tq",
-                          target_q[i * 2][action], error, weights[i *
-                                                                  2], action, "s",
-                          extra[0], "r", reward, sep='\t')
-                    print(self.steps, "modifvalues", terminal, "s", extra[0], "cl:",
-                          arr2str(target_q[i * 2 + 1]), arr2str(model_q[i * 2 + 1]))
 
             errors[i] = error
 
