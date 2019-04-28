@@ -36,7 +36,7 @@ try:
 except:
     import Image
 
-DEBUG = 1
+DEBUG = 0
 
 
 def masked_error(args):
