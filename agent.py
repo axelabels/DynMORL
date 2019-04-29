@@ -32,7 +32,7 @@ from utils import *
 from pprint import pprint
 
 
-def LEAKY_RELU(): return LeakyReLU(0.01)
+def LEAKY_RELU(): return LeakyReLU(0.3)
 
 
 try:
@@ -84,7 +84,7 @@ class DeepAgent():
                  extra="",
                  clipnorm=1,
                  clipvalue=1,
-                 nesterov=True,
+                 nesterov=False,
                  momentum=0.9,
                  dupe=False,
                  start_annealing=0.2,
@@ -865,7 +865,6 @@ class DeepAgent():
         target_q = self.target_model.predict(inp, batch_size=200)
 
         return model_q, target_q, w_batch, states
-
 
     def update_priorities(self, batch, ids, ignore_dupe=False, pr=False):
         """Given a batch of transitions, this method computes each transition's

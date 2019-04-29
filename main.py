@@ -62,7 +62,7 @@ parser.add_option(
     help="clipvalue",
     type=float)
 parser.add_option(
-    "--momentum", dest="momentum", default=".9", help="momentum", type=float)
+    "--momentum", dest="momentum", default=".5", help="momentum", type=float)
 parser.add_option(
     "-u",
     "--update_period",
@@ -124,7 +124,6 @@ np.random.seed(options.seed)
 json_file = "mine_config.json"
 minecart = Minecart.from_json(json_file)
 obj_cnt = minecart.obj_cnt()
-assert type(options.steps)==int
 all_weights = generate_weights(
     count=options.steps, n=minecart.obj_cnt(), m=1 if options.mode == "sparse" else 10)
 

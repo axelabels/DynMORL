@@ -216,9 +216,6 @@ class Log(object):
         if terminal:
             mean_q = np.mean(q_values, axis=0)
 
-            # optimal_reward, optimal_steps = env.optimal_reward(
-            #     weights, discount)
-            print("qvalues", arr2str(q_values), weights)
             episode_log_length = int(episode_steps)
             elapsed = time.time() - self.start_time
             losses = self.losses[-episode_log_length:] or [0]
