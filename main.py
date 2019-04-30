@@ -62,7 +62,7 @@ parser.add_option(
     help="clipvalue",
     type=float)
 parser.add_option(
-    "--momentum", dest="momentum", default=".5", help="momentum", type=float)
+    "--momentum", dest="momentum", default=".9", help="momentum", type=float)
 parser.add_option(
     "-u",
     "--update_period",

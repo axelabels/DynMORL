@@ -9,7 +9,6 @@ import time
 import keras.backend as K
 import scipy.spatial
 from operator import mul
-import tensorflow as tf
 from keras import initializers
 from keras.backend.tensorflow_backend import set_session
 from keras.callbacks import LearningRateScheduler
@@ -20,10 +19,6 @@ from keras.models import Model, load_model
 from keras.optimizers import *
 from keras.utils import np_utils
 
-from keras.backend.tensorflow_backend import set_session
-config = tf.ConfigProto()
-config.gpu_options.per_process_gpu_memory_fraction = 0.1
-set_session(tf.Session(config=config))
 from config_agent import *
 from diverse_mem import DiverseMemory
 from history import *
@@ -32,7 +27,7 @@ from utils import *
 from pprint import pprint
 
 
-def LEAKY_RELU(): return LeakyReLU(0.3)
+def LEAKY_RELU(): return LeakyReLU(0.01)
 
 
 try:
@@ -73,7 +68,7 @@ class DeepAgent():
                  start_e=1.,
                  end_e=0.05,
                  learning_rate=1e-1,
-                 target_update_interval=600,
+                 target_update_interval=150,
                  frame_skip=4,
                  alg="scal",
                  memory_type="STD",
@@ -84,7 +79,7 @@ class DeepAgent():
                  extra="",
                  clipnorm=1,
                  clipvalue=1,
-                 nesterov=False,
+                 nesterov=True,
                  momentum=0.9,
                  dupe=False,
                  start_annealing=0.2,
@@ -907,7 +902,6 @@ class DeepAgent():
                         target_q[i * 2 + 1][next_action]
 
             error = mae(model_q[i * 2][action], target)
-
 
             errors[i] = error
 
