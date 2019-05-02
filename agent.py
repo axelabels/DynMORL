@@ -525,7 +525,7 @@ class DeepAgent():
 
                     # Add the trained policy
                     self.mn.add_new_policy(
-                        cur_value, weights[:weight_index + 1], model_pol_index, override=i < self.learning_steps * 1.5)
+                        cur_value, weights[:weight_index + 1], model_pol_index, override=weight_index<=1)
 
                 if per_weight_steps == 1:
                     weight_index += 1
