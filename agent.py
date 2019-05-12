@@ -206,7 +206,7 @@ class DeepAgent():
         # We always build the weight input, but don't connect it to the network
         # when it is not required.
         weight_input = Input((self.obj_cnt, ), name="weight_input")
-
+        
         x = Lambda(lambda x: x / 255., name="input_normalizer")(state_input)
 
         # Convolutional layers
@@ -341,6 +341,7 @@ class DeepAgent():
         main_model, trainable_model = self.build_head(
             feature_layer, state_input, weight_input)
 
+        state_input, feature_layer, weight_input = self.build_base()
         target_model, _ = self.build_head(
             feature_layer, state_input, weight_input)
 
@@ -709,7 +710,7 @@ class DeepAgent():
                 self.update_target()
 
         return loss
-
+        
     def update_epsilon(self, steps):
         """Update exploration rate
 
