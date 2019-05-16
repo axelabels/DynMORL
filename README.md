@@ -10,7 +10,7 @@ This repository contains the code for our paper "Dynamic Weights in Multi-Object
 }
 ```
 
-https://arxiv.org/abs/1809.07803v1
+https://arxiv.org/abs/1809.07803v2
 
 ---------------------------------------
 #### Abstract
