@@ -5,6 +5,9 @@ from minecart import Minecart
 json_file = "mine_config_det.json"
 env = Minecart.from_json(json_file)
 
+# # Or alternatively, generate a random instance
+# env = Minecart(mine_cnt=5,ore_cnt=2,capacity=1)
+
 # Initial State
 s_t = env.reset()
 
