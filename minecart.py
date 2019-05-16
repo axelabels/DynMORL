@@ -7,7 +7,6 @@ import numpy as np
 import scipy.stats
 import sys
 from scipy.stats import norm
-from utils import *
 
 
 try:
@@ -588,3 +587,16 @@ def rot_center(image, angle):
     rot_rect.center = rot_image.get_rect().center
     rot_image = rot_image.subsurface(rot_rect).copy()
     return rot_image
+
+
+
+def mag(vector2d):
+    return np.sqrt(np.dot(vector2d,vector2d))
+
+
+def clip(val, lo, hi):
+    return lo if val <= lo else hi if val >= hi else val
+
+
+def scl(c):
+    return (c[0] / 255., c[1] / 255., c[2] / 255.)
