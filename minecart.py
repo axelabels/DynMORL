@@ -2,28 +2,30 @@ from __future__ import print_function
 
 import math
 import random
+from utils import truncated_mean, compute_angle, pareto_filter
 
+import itertools
 import numpy as np
 import scipy.stats
 import sys
 from scipy.stats import norm
-
+from math import ceil
 
 try:
     import cairocffi as cairo
     CAIRO = True
-    print("Using cairocffi backend",file=sys.stderr)
+    print("Using cairocffi backend", file=sys.stderr)
 except:
-    print("Failed to import cairocffi, trying cairo...",file=sys.stderr)
+    print("Failed to import cairocffi, trying cairo...", file=sys.stderr)
     try:
         import cairo
         CAIRO = True
-        print("Using cairo backend",file=sys.stderr)
+        print("Using cairo backend", file=sys.stderr)
     except:
-        print("Failed to import cairo, trying pygame...",file=sys.stderr)
+        print("Failed to import cairo, trying pygame...", file=sys.stderr)
         import pygame
         CAIRO = False
-        print("Using pygame backend",file=sys.stderr)
+        print("Using pygame backend", file=sys.stderr)
 
 
 EPS_SPEED = 0.001  # Minimum speed to be considered in motion
@@ -46,8 +48,12 @@ ACT_RIGHT = 2
 ACT_ACCEL = 3
 ACT_BRAKE = 4
 ACT_NONE = 5
+FUEL_LIST = [FUEL_MINE + FUEL_IDLE,FUEL_IDLE,FUEL_IDLE,FUEL_IDLE + FUEL_ACC ,FUEL_IDLE,FUEL_IDLE]
+FUEL_DICT = {ACT_MINE: FUEL_MINE + FUEL_IDLE, ACT_LEFT: FUEL_IDLE, ACT_RIGHT: FUEL_IDLE,
+             ACT_ACCEL: FUEL_IDLE + FUEL_ACC, ACT_BRAKE: FUEL_IDLE, ACT_NONE: FUEL_IDLE}
 ACTIONS = ["Mine", "Left", "Right", "Accelerate", "Brake", "None"]
 ACTION_COUNT = len(ACTIONS)
+
 
 MINE_RADIUS = 0.14
 BASE_RADIUS = 0.15
@@ -79,6 +85,7 @@ DECELERATION = 1
 
 CART_IMG = 'images/cart.png'
 MINE_IMG = 'images/mine.png'
+
 
 class Mine():
     """Class representing an individual Mine
@@ -115,7 +122,7 @@ class Mine():
 
         for i, dist in enumerate(self.distributions):
             mean, std = dist.mean(), dist.std()
-            means[i] = truncated_mean(mean,std,0,INF)
+            means[i] = truncated_mean(mean, std, 0, float("inf"))
 
         return means
 
@@ -171,6 +178,7 @@ class Cart():
 
         return True
 
+
 class Minecart:
     """Minecart environment
     """
@@ -216,6 +224,117 @@ class Minecart:
 
     def obj_cnt(self):
         return self.ore_cnt + 1
+
+    def optimal_reward(self, frame_skip=1, discount=0.98, add_steps=False, incremental_frame_skip=True):
+
+        all_rewards = []
+        for mine in (self.mines):
+            mine_distance = mag(mine.pos - HOME_POS) - \
+                MINE_RADIUS * MINE_SCALE - BASE_RADIUS * BASE_SCALE / 2
+
+            # Slowest (rational) way of reaching mine is to accelerate once then
+            # do nothing, we first compute how many suche idle actions it takes
+            # to reach the mine
+            max_idles = 0
+
+            dist = mine_distance
+            speed = 0
+
+            steps = frame_skip if incremental_frame_skip else 1
+            step_size = 1 if incremental_frame_skip else frame_skip
+            # initial acceleration
+            for _ in range(steps):
+                speed += ACCELERATION * step_size
+                dist -= speed * step_size
+            # subsequent idle actions
+            while dist > 0:
+                for _ in range(steps):
+                    dist -= speed * step_size
+
+                max_idles += 1
+
+            # Number of rotations required to face the mine
+            angle = compute_angle(mine.pos, HOME_POS, [1, 1])
+            rotations = int(ceil(abs(angle) / (ROTATION * frame_skip)))
+
+            # all possible action sequences that lead to the mine (after the initial acceleration)
+            sequences = itertools.product([3, 5], repeat=max_idles - 1)
+
+            # Some of these sequences would go beyond the mine, trim to keep
+            # only unique actions until the mine is reached
+            trimmed_sequences = set()
+            for p in sequences:
+                dist = mine_distance
+                speed = 0
+                # Initial acceleration
+                for _ in range(steps):
+                    speed += ACCELERATION * step_size
+                    dist -= speed * step_size
+                # Subsequent actions
+                for i, a in enumerate(p):
+                    for _ in range(steps):
+                        if a == ACT_ACCEL:
+                            speed += ACCELERATION * step_size
+                        dist -= speed * step_size
+
+                    if dist <= 0:
+                        break
+                
+                trimmed_sequences.add(p[:i + 1])
+                
+            # Actions performed before mining
+            # 1. rotation towards mine
+            # 2. acceleration+nops (= ACT_IDLE)
+            # 3. brake
+            # 4. rotation to face origin
+            pre_mine_actions = []
+            for p in trimmed_sequences:
+                pre_mine_actions.append([ACT_LEFT] * rotations +  # rotations to face mine
+                                        [ACT_ACCEL] +  # initial acceleration
+                                        list(p) +  # accelerate/idle sequence
+                                        [ACT_BRAKE] +  # brake when on mine
+                                        [ACT_LEFT] * (180 // (ROTATION * frame_skip)))  # rotate
+
+            print("building mine")
+            mine_means = mine.distribution_means() * frame_skip
+            mn_sum = np.sum(mine_means)
+            # on average it takes up to this many actions to fill cart
+            max_mine_actions = int(ceil(self.capacity / mn_sum))
+
+            # all possible mining sequences (i.e. how many times we mine)
+            mine_sequences = [[ACT_MINE] *
+                              i for i in range(1, max_mine_actions + 1)]
+
+            print("building post")
+            # Action to perform after mining is just returning to base,
+            # i.e., accelerating and then any sequence of acceleration and nops
+            post_mine_actions = []
+            for p in trimmed_sequences:
+                post_mine_actions.append([ACT_ACCEL] + list(p))
+
+            print("combining")
+            # All possible combinations of actions before, during and after mining
+            all_sequences = map(lambda pre_intra_post: list(pre_intra_post[0]) + list(pre_intra_post[1]) + list(
+                pre_intra_post[2]), (itertools.product(pre_mine_actions, mine_sequences, post_mine_actions)))
+
+            print("computing rewards")
+            # Compute rewards for each sequence
+            for s in all_sequences:
+                reward = np.zeros(self.obj_cnt())
+                for i, a in enumerate(s):
+                    if a == ACT_MINE:
+                        rem_cap = self.capacity - np.sum(reward[:-1])
+                        mined_ratio = min(1, rem_cap / mn_sum)
+                        step_mined = mine_means * mined_ratio
+                        reward[:-1] += step_mined
+                    reward[-1] += FUEL_LIST[a] * frame_skip * discount**i
+                # collected resources rewarded at the end
+                reward[:-1] *= discount**i
+                all_rewards.append(reward)
+        print("computing pareto")
+        all_rewards = pareto_filter(all_rewards, minimize=False)
+
+        return all_rewards
 
     @staticmethod
     def from_json(filename):
@@ -289,7 +408,7 @@ class Minecart:
                     mine.pos[1] * (1 - 2 * MARGIN)) * HEIGHT + MARGIN * HEIGHT
                 self.mine_rects.append(mine_sprite.rect)
 
-    def step(self, action, frame_skip=1):
+    def step(self, action, frame_skip=1, incremental_frame_skip=True):
         """Perform the given action `frame_skip` times
          ["Mine", "Left", "Right", "Accelerate", "Brake", "None"]
         Arguments:
@@ -297,6 +416,7 @@ class Minecart:
 
         Keyword Arguments:
             frame_skip {int} -- Repeat the action this many times (default: {1})
+            incremental_frame_skip {int} -- If True, frame_skip actions are performed in succession, otherwise the repeated actions are performed simultaneously (e.g., 4 accelerations are performed and then the cart moves).
 
         Returns:
             tuple -- (state, reward, terminal) tuple
@@ -316,25 +436,32 @@ class Minecart:
             reward[-1] += FUEL_ACC * frame_skip
         elif action == ACT_MINE:
             reward[-1] += FUEL_MINE * frame_skip
-        for _ in range(frame_skip):
+
+        for _ in range(frame_skip if incremental_frame_skip else 1):
 
             if action == ACT_LEFT:
-                self.cart.rotate(-ROTATION)
+                self.cart.rotate(-ROTATION *
+                                 (1 if incremental_frame_skip else frame_skip))
                 change = True
             elif action == ACT_RIGHT:
-                self.cart.rotate(ROTATION)
+                self.cart.rotate(
+                    ROTATION * (1 if incremental_frame_skip else frame_skip))
                 change = True
             elif action == ACT_ACCEL:
-                self.cart.accelerate(ACCELERATION)
+                self.cart.accelerate(
+                    ACCELERATION * (1 if incremental_frame_skip else frame_skip))
             elif action == ACT_BRAKE:
-                self.cart.accelerate(-DECELERATION)
+                self.cart.accelerate(-DECELERATION *
+                                     (1 if incremental_frame_skip else frame_skip))
             elif action == ACT_MINE:
-                change = self.mine() or change
+                for _ in range(1 if incremental_frame_skip else frame_skip):
+                    change = self.mine() or change
 
             if self.end:
                 break
 
-            change = self.cart.step() or change
+            for _ in range(1 if incremental_frame_skip else frame_skip):
+                change = self.cart.step() or change
 
             distanceFromBase = mag(self.cart.pos - HOME_POS)
             if distanceFromBase < BASE_RADIUS * BASE_SCALE:
@@ -552,6 +679,8 @@ class Minecart:
 
 
 images = {}
+
+
 def draw_image(ctx, image, top, left, scale, rotation):
     """Rotate, scale and draw an image on a cairo context
     """
@@ -589,9 +718,8 @@ def rot_center(image, angle):
     return rot_image
 
 
-
 def mag(vector2d):
-    return np.sqrt(np.dot(vector2d,vector2d))
+    return np.sqrt(np.dot(vector2d, vector2d))
 
 
 def clip(val, lo, hi):

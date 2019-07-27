@@ -126,7 +126,7 @@ def merge_weights(model, weight_dic, p=0):
             weight_dic: A dictionary of weights keyed by layer names to merge into the model
             p: Relative importance of the model's weights when merging (if p=0, weight_dic is copied entirely, if p=1, the model's weights are preserved completely)
     """
-    if p==1:
+    if p == 1:
         return
     for layer in model.layers:
         if layer.name in weight_dic or hasattr(layer, 'kernel_initializer'):
@@ -146,14 +146,15 @@ def merge_weights(model, weight_dic, p=0):
             layer.set_weights(merged)
 
 
-def glorot_init(shape,seed=0):
-    assert len(shape)==2
+def glorot_init(shape, seed=0):
+    assert len(shape) == 2
     from keras.initializers import _compute_fans
     fan_in, fan_out = _compute_fans(shape)
-    scale = 1/  max(1., float(fan_in + fan_out) / 2)
+    scale = 1 / max(1., float(fan_in + fan_out) / 2)
 
     limit = np.sqrt(3. * scale)
-    return np.random.uniform(-limit, limit,shape)
+    return np.random.uniform(-limit, limit, shape)
+
 
 def mae(truth, prediction):
     """Computes the Mean Absolute Error between two arrays
@@ -297,7 +298,7 @@ def generate_weights(count=1, n=3, m=1):
 
 
 def mag(vector2d):
-    return np.sqrt(np.dot(vector2d,vector2d))
+    return np.sqrt(np.dot(vector2d, vector2d))
 
 
 def clip(val, lo, hi):
@@ -307,10 +308,13 @@ def clip(val, lo, hi):
 def scl(c):
     return (c[0] / 255., c[1] / 255., c[2] / 255.)
 
-def truncated_mean(mean,std,a,b):
+
+def truncated_mean(mean, std, a, b):
+    if std == 0:
+        return mean
     from scipy.stats import norm
-    a=(a-mean)/std
-    b=(b-mean)/std
+    a = (a - mean) / std
+    b = (b - mean) / std
     PHIB = norm.cdf(b)
     PHIA = norm.cdf(a)
     phib = norm.pdf(b)
@@ -320,9 +324,42 @@ def truncated_mean(mean,std,a,b):
     return trunc_mean
 
 
+def compute_angle(p0, p1, p2):
+    v0 = np.array(p0) - np.array(p1)
+    v1 = np.array(p2) - np.array(p1)
+
+    angle = np.math.atan2(np.linalg.det([v0, v1]), np.dot(v0, v1))
+    return np.degrees(angle)
+
+
+def pareto_filter(costs, minimize=True):
+    """
+    Find the pareto-efficient points
+    :param costs: An (n_points, n_costs) array
+    :param return_mask: True to return a mask
+    :return: An array of indices of pareto-efficient points.
+        If return_mask is True, this will be an (n_points, ) boolean array
+        Otherwise it will be a (n_efficient_points, ) integer array of indices.
+    from https://stackoverflow.com/a/40239615
+    """
+    costs_copy = np.copy(costs) if minimize else -np.copy(costs)
+    is_efficient = np.arange(costs_copy.shape[0])
+    n_points = costs_copy.shape[0]
+    next_point_index = 0  # Next index in the is_efficient array to search for
+    while next_point_index < len(costs_copy):
+        nondominated_point_mask = np.any(
+            costs_copy < costs_copy[next_point_index], axis=1)
+        nondominated_point_mask[next_point_index] = True
+        # Remove dominated points
+        is_efficient = is_efficient[nondominated_point_mask]
+        costs_copy = costs_copy[nondominated_point_mask]
+        next_point_index = np.sum(
+            nondominated_point_mask[:next_point_index]) + 1
+    return [costs[i] for i in is_efficient]
+
+
 class Object(object):
     """
         Generic object
     """
     pass
-
