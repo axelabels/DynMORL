@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/183918285.svg)](https://zenodo.org/badge/latestdoi/183918285)
+
 This repository contains the code for our paper "Dynamic Weights in Multi-Objective Deep Reinforcement Learning", as published at ICML 2019. If you use this code in your own research, please cite this paper:
 
 ```
